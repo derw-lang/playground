@@ -1,0 +1,27 @@
+{
+  "name": "playground",
+  "version": "1.0.0",
+  "description": "Experiment with Derw in the browser",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/derw-lang/playground.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/derw-lang/playground/issues"
+  },
+  "homepage": "https://github.com/derw-lang/playground#readme",
+  "dependencies": {
+    "@types/codeflask": "^1.4.3",
+    "@types/prismjs": "^1.16.6",
+    "codeflask": "^1.4.1",
+    "derw": "^0.0.3-12",
+    "prismjs": "^1.26.0"
+  }
+}

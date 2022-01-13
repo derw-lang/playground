@@ -1,0 +1,6 @@
+import "./Codeflask_kernel" as codeflask
+
+main: any
+main = codeflask.newEditor "root"
+
+
