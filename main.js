@@ -477,6 +477,819 @@
     }
   });
 
+  // node_modules/derw/build/derw_generator.js
+  var require_derw_generator = __commonJS({
+    "node_modules/derw/build/derw_generator.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.generateDerw = void 0;
+      var types_1 = require_types();
+      function prefixLines(body, indent) {
+        return body.split("\n").map((line) => line.trim() === "" ? "" : " ".repeat(indent) + line).join("\n");
+      }
+      function generateUnionType(syntax) {
+        const tags = syntax.tags.map((tag) => {
+          const typeDefArgs = tag.args.map((arg) => arg.name + ": " + generateType(arg.type)).join(",\n    ");
+          const funcDefArgsStr = tag.args.length > 0 ? ` { ${typeDefArgs} }` : "";
+          return generateType(types_1.FixedType(tag.name, [])) + funcDefArgsStr;
+        }).join("\n| ");
+        return `
+type ${generateType(syntax.type)} =
+${prefixLines(tags, 4)}
+`.trim();
+      }
+      function generateProperty(syntax) {
+        return `${syntax.name}: ${generateType(syntax.type)}`;
+      }
+      function generateTypeAlias(syntax) {
+        const generatedProperties = syntax.properties.map(generateProperty);
+        const properties = generatedProperties.join(",\n    ");
+        const type = generateType(syntax.type);
+        return `
+type alias ${type} = {
+    ${properties}
+}
+`.trim();
+      }
+      function generateField(field) {
+        const value = generateExpression(field.value);
+        if (field.name === value) {
+          return `${field.name}: ${value}`;
+        }
+        return `${field.name}: ${value}`;
+      }
+      function generateObjectLiteral(literal) {
+        let fields = literal.fields.map(generateField).join(",\n    ");
+        if (literal.fields.length === 1)
+          return `{ ${fields} }`;
+        return `{
+    ${fields}
+}`;
+      }
+      function generateValue(value) {
+        return value.body;
+      }
+      function generateStringValue(string) {
+        return `"${string.body}"`;
+      }
+      function generateFormatStringValue(string) {
+        return `\`${string.body}\``;
+      }
+      function generateListValue(list) {
+        if (list.items.length === 0)
+          return `[ ]`;
+        if (list.items.length === 1)
+          return `[ ${generateExpression(list.items[0])} ]`;
+        return `[
+${prefixLines(list.items.map(generateExpression).join(",\n"), 4)}
+]`;
+      }
+      function generateListRange(list) {
+        return `[ ${list.start.body}..${list.end.body} ]`;
+      }
+      function generateIfStatement(ifStatement) {
+        return `if ${generateExpression(ifStatement.predicate)} then
+${prefixLines(generateExpression(ifStatement.ifBody), 4)}
+else
+${prefixLines(generateExpression(ifStatement.elseBody), 4)}
+`;
+      }
+      function generateConstructor(constructor) {
+        if (constructor.pattern.fields.length === 0)
+          return `${constructor.constructor}`;
+        return `${constructor.constructor} ${generateObjectLiteral(constructor.pattern)}`;
+      }
+      function generateBranchPattern(branchPattern) {
+        switch (branchPattern.kind) {
+          case "Destructure": {
+            const pattern = branchPattern.pattern ? ` ${branchPattern.pattern}` : "";
+            return `${branchPattern.constructor}${pattern}`;
+          }
+          case "StringValue": {
+            return `"` + branchPattern.body + `"`;
+          }
+          case "Default": {
+            return "default";
+          }
+        }
+      }
+      function generateBranch(branch) {
+        const maybeLetBody = branch.letBody.length > 0 ? prefixLines("\nlet", 4) + "\n" + prefixLines(branch.letBody.map(generateBlock).join("\n\n"), 8) + prefixLines("\nin", 4) : "";
+        return `${generateBranchPattern(branch.pattern)} ->${maybeLetBody}
+    ${generateExpression(branch.body)}
+`.trim();
+      }
+      function generateCaseStatement(caseStatement) {
+        const predicate = generateExpression(caseStatement.predicate);
+        const branches = caseStatement.branches.map((branch) => generateBranch(branch));
+        return `case ${predicate} of
+${prefixLines(branches.join("\n"), 4)}
+`.trim();
+      }
+      function generateTopLevelType(type_) {
+        switch (type_.kind) {
+          case "GenericType": {
+            return generateType(type_);
+          }
+          case "FixedType": {
+            if (type_.name === "List") {
+              return generateType(type_);
+            }
+            const args = type_.args.filter((type_2) => type_2.kind === "GenericType" || type_2.kind === "FixedType");
+            if (args.length === 0) {
+              return type_.name;
+            }
+            return `${type_.name} ${args.map(generateType).join(" ")}`;
+          }
+          case "FunctionType": {
+            return generateType(type_);
+          }
+        }
+      }
+      function generateType(type_) {
+        switch (type_.kind) {
+          case "GenericType": {
+            return type_.name;
+          }
+          case "FixedType": {
+            if (type_.name === "List") {
+              if (type_.args[0] && type_.args[0].kind === "GenericType") {
+                return "List " + generateType(type_.args[0]);
+              }
+              const fixedArgs = type_.args.filter((type_2) => type_2.kind === "FixedType");
+              if (fixedArgs.length === 0) {
+                return "List any";
+              } else if (fixedArgs.length === 1) {
+                return `List ${generateType(fixedArgs[0])}`;
+              }
+              return `List (${fixedArgs.map(generateType).join(" | ")})`;
+            }
+            const args = type_.args.filter((type_2) => type_2.kind === "GenericType");
+            if (args.length === 0) {
+              return type_.name;
+            }
+            return `${type_.name} ${args.map(generateType).join(" ")}`;
+          }
+          case "FunctionType": {
+            return "(" + type_.args.map(generateType).join(" -> ") + ")";
+          }
+        }
+      }
+      function generateAddition(addition) {
+        const left = generateExpression(addition.left);
+        const right = generateExpression(addition.right);
+        return `${left} + ${right}`;
+      }
+      function generateSubtraction(subtraction) {
+        const left = generateExpression(subtraction.left);
+        const right = generateExpression(subtraction.right);
+        return `${left} - ${right}`;
+      }
+      function generateMultiplication(multiplication) {
+        const left = generateExpression(multiplication.left);
+        const right = generateExpression(multiplication.right);
+        return `${left} * ${right}`;
+      }
+      function generateDivision(division) {
+        const left = generateExpression(division.left);
+        const right = generateExpression(division.right);
+        return `${left} / ${right}`;
+      }
+      function generateLeftPipe(leftPipe) {
+        const left = generateExpression(leftPipe.left);
+        const right = generateExpression(leftPipe.right);
+        return `${left}
+    |> ${right}`;
+      }
+      function generateRightPipe(rightPipe) {
+        const left = generateExpression(rightPipe.left);
+        const right = generateExpression(rightPipe.right);
+        return `${left}
+    <| ${right}`;
+      }
+      function generateModuleReference(moduleReference) {
+        const left = moduleReference.path.join(".");
+        const right = generateExpression(moduleReference.value);
+        return `${left}.${right}`;
+      }
+      function generateFunctionCall(functionCall) {
+        if (functionCall.args.length === 0)
+          return `${functionCall.name}()`;
+        const right = functionCall.args.map(generateExpression).join(" ");
+        return `${functionCall.name} ${right}`;
+      }
+      function generateLambda(lambda) {
+        const args = lambda.args.map((arg) => `${arg}`).join(" ");
+        const body = generateExpression(lambda.body);
+        return `
+(\\${args} -> ${body})
+`.trim();
+      }
+      function generateLambdaCall(lambdaCall) {
+        const args = lambdaCall.lambda.args.map((arg) => `${arg}: any`).join(", ");
+        const argsValues = lambdaCall.args.map(generateExpression).join(", ");
+        const body = generateExpression(lambdaCall.lambda.body);
+        return `
+(function(${args}) {
+    return ${body};
+})(${argsValues})
+`.trim();
+      }
+      function generateEquality(equality) {
+        const left = generateExpression(equality.left);
+        const right = generateExpression(equality.right);
+        return `${left} == ${right}`;
+      }
+      function generateInEquality(inEquality) {
+        const left = generateExpression(inEquality.left);
+        const right = generateExpression(inEquality.right);
+        return `${left} != ${right}`;
+      }
+      function generateLessThan(lessThan) {
+        const left = generateExpression(lessThan.left);
+        const right = generateExpression(lessThan.right);
+        return `${left} < ${right}`;
+      }
+      function generateLessThanOrEqual(lessThanOrEqual) {
+        const left = generateExpression(lessThanOrEqual.left);
+        const right = generateExpression(lessThanOrEqual.right);
+        return `${left} <= ${right}`;
+      }
+      function generateGreaterThan(greaterThan) {
+        const left = generateExpression(greaterThan.left);
+        const right = generateExpression(greaterThan.right);
+        return `${left} > ${right}`;
+      }
+      function generateGreaterThanOrEqual(greaterThanOrEqual) {
+        const left = generateExpression(greaterThanOrEqual.left);
+        const right = generateExpression(greaterThanOrEqual.right);
+        return `${left} >= ${right}`;
+      }
+      function generateAnd(and) {
+        const left = generateExpression(and.left);
+        const right = generateExpression(and.right);
+        return `${left} && ${right}`;
+      }
+      function generateOr(or) {
+        const left = generateExpression(or.left);
+        const right = generateExpression(or.right);
+        return `${left} || ${right}`;
+      }
+      function generateExpression(expression) {
+        switch (expression.kind) {
+          case "Value":
+            return generateValue(expression);
+          case "StringValue":
+            return generateStringValue(expression);
+          case "FormatStringValue":
+            return generateFormatStringValue(expression);
+          case "ListValue":
+            return generateListValue(expression);
+          case "ListRange":
+            return generateListRange(expression);
+          case "ObjectLiteral":
+            return generateObjectLiteral(expression);
+          case "IfStatement":
+            return generateIfStatement(expression);
+          case "CaseStatement":
+            return generateCaseStatement(expression);
+          case "Addition":
+            return generateAddition(expression);
+          case "Subtraction":
+            return generateSubtraction(expression);
+          case "Multiplication":
+            return generateMultiplication(expression);
+          case "Division":
+            return generateDivision(expression);
+          case "And":
+            return generateAnd(expression);
+          case "Or":
+            return generateOr(expression);
+          case "LeftPipe":
+            return generateLeftPipe(expression);
+          case "RightPipe":
+            return generateRightPipe(expression);
+          case "ModuleReference":
+            return generateModuleReference(expression);
+          case "FunctionCall":
+            return generateFunctionCall(expression);
+          case "Lambda":
+            return generateLambda(expression);
+          case "LambdaCall":
+            return generateLambdaCall(expression);
+          case "Constructor":
+            return generateConstructor(expression);
+          case "Equality":
+            return generateEquality(expression);
+          case "InEquality":
+            return generateInEquality(expression);
+          case "LessThan":
+            return generateLessThan(expression);
+          case "LessThanOrEqual":
+            return generateLessThanOrEqual(expression);
+          case "GreaterThan":
+            return generateGreaterThan(expression);
+          case "GreaterThanOrEqual":
+            return generateGreaterThanOrEqual(expression);
+        }
+      }
+      function generateFunction(function_) {
+        const functionArgumentsTypes = function_.args.map((arg) => {
+          switch (arg.kind) {
+            case "FunctionArg":
+              return generateType(arg.type);
+            case "AnonFunctionArg":
+              return generateType(arg.type);
+          }
+        }).join(" -> ");
+        const functionArguments = function_.args.map((arg) => {
+          switch (arg.kind) {
+            case "FunctionArg":
+              return arg.name;
+            case "AnonFunctionArg":
+              return "_" + arg.index;
+          }
+        }).join(" ");
+        const maybeLetBody = function_.letBody.length > 0 ? prefixLines("\nlet", 4) + "\n" + prefixLines(function_.letBody.map(generateBlock).join("\n\n"), 8) + prefixLines("\nin", 4) : "";
+        const returnType = generateTopLevelType(function_.returnType);
+        const body = generateExpression(function_.body);
+        const prefixedBody = prefixLines(body, maybeLetBody === "" ? 4 : 8);
+        return `
+${function_.name}: ${functionArgumentsTypes} -> ${returnType}
+${function_.name} ${functionArguments} =${maybeLetBody}
+${prefixedBody}
+`.trim();
+      }
+      function generateConst(constDef) {
+        const body = prefixLines(generateExpression(constDef.value), 4);
+        const typeDef = generateTopLevelType(constDef.type);
+        return `
+${constDef.name}: ${typeDef}
+${constDef.name} =
+${body}
+`.trim();
+      }
+      function generateImportBlock(imports) {
+        return imports.modules.map((module2) => {
+          if (module2.alias.kind === "just")
+            return `import ${module2.name} as ${module2.alias.value}`;
+          if (module2.exposing.length > 0)
+            return `import ${module2.name} exposing ( ${module2.exposing.join(", ")} )`;
+          return `import ${module2.name}`;
+        }).join("\n");
+      }
+      function generateExportBlock(exports2) {
+        return `exposing (${exports2.names.join(", ")})`;
+      }
+      function generateBlock(syntax) {
+        switch (syntax.kind) {
+          case "Import":
+            return generateImportBlock(syntax);
+          case "Export":
+            return generateExportBlock(syntax);
+          case "UnionType":
+            return generateUnionType(syntax);
+          case "TypeAlias":
+            return generateTypeAlias(syntax);
+          case "Function":
+            return generateFunction(syntax);
+          case "Const":
+            return generateConst(syntax);
+          case "Comment":
+          case "MultilineComment":
+            return "";
+        }
+      }
+      function generateDerw2(module2) {
+        return module2.body.map(generateBlock).filter((line) => line.length > 0).join("\n\n");
+      }
+      exports.generateDerw = generateDerw2;
+    }
+  });
+
+  // node_modules/derw/build/elm_generator.js
+  var require_elm_generator = __commonJS({
+    "node_modules/derw/build/elm_generator.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.generateElm = void 0;
+      var types_1 = require_types();
+      function prefixLines(body, indent) {
+        return body.split("\n").map((line) => line.trim() === "" ? "" : " ".repeat(indent) + line).join("\n");
+      }
+      function generateUnionType(syntax) {
+        const tags = syntax.tags.map((tag) => {
+          const typeDefArgs = tag.args.map((arg) => arg.name + ": " + generateType(arg.type)).join(",\n    ");
+          const funcDefArgsStr = tag.args.length > 0 ? ` { ${typeDefArgs} }` : "";
+          return generateType(types_1.FixedType(tag.name, [])) + funcDefArgsStr;
+        }).join("\n| ");
+        return `
+type ${generateType(syntax.type)} =
+${prefixLines(tags, 4)}
+`.trim();
+      }
+      function generateProperty(syntax) {
+        return `${syntax.name}: ${generateType(syntax.type)}`;
+      }
+      function generateTypeAlias(syntax) {
+        const generatedProperties = syntax.properties.map(generateProperty);
+        const properties = generatedProperties.join(",\n    ");
+        const type = generateType(syntax.type);
+        return `
+type alias ${type} = {
+    ${properties}
+}
+`.trim();
+      }
+      function generateField(field) {
+        const value = generateExpression(field.value);
+        if (field.name === value) {
+          return `${field.name} = ${value}`;
+        }
+        return `${field.name} = ${value}`;
+      }
+      function generateObjectLiteral(literal) {
+        let fields = literal.fields.map(generateField).join(",\n    ");
+        if (literal.fields.length === 1)
+          return `{ ${fields} }`;
+        return `{
+    ${fields}
+}`;
+      }
+      function generateValue(value) {
+        if (value.body === `true`)
+          return "True";
+        if (value.body === "false")
+          return "False";
+        return value.body;
+      }
+      function generateStringValue(string) {
+        return `"${string.body}"`;
+      }
+      function generateFormatStringValue(string) {
+        return `"${string.body}"`;
+      }
+      function generateListValue(list) {
+        if (list.items.length === 0)
+          return `[ ]`;
+        if (list.items.length === 1)
+          return `[ ${generateExpression(list.items[0])} ]`;
+        return `[
+${prefixLines(list.items.map(generateExpression).join(",\n"), 4)}
+]`;
+      }
+      function generateListRange(list) {
+        return `[ ${list.start.body}..${list.end.body} ]`;
+      }
+      function generateIfStatement(ifStatement) {
+        return `if ${generateExpression(ifStatement.predicate)} then
+${prefixLines(generateExpression(ifStatement.ifBody), 4)}
+else
+${prefixLines(generateExpression(ifStatement.elseBody), 4)}
+`;
+      }
+      function generateConstructor(constructor) {
+        return `${constructor.constructor} ${generateObjectLiteral(constructor.pattern)}`;
+      }
+      function generateBranchPattern(branchPattern) {
+        switch (branchPattern.kind) {
+          case "Destructure": {
+            const pattern = branchPattern.pattern ? ` ${branchPattern.pattern}` : "";
+            return `${branchPattern.constructor}${pattern}`;
+          }
+          case "StringValue": {
+            return `"` + branchPattern.body + `"`;
+          }
+          case "Default": {
+            return "default";
+          }
+        }
+      }
+      function generateBranch(branch) {
+        const maybeLetBody = branch.letBody.length > 0 ? prefixLines("\nlet", 4) + "\n" + prefixLines(branch.letBody.map(generateBlock).join("\n\n"), 8) + prefixLines("\nin", 4) : "";
+        return `${generateBranchPattern(branch.pattern)} ->${maybeLetBody}
+    ${generateExpression(branch.body)}
+`.trim();
+      }
+      function generateCaseStatement(caseStatement) {
+        const predicate = generateExpression(caseStatement.predicate);
+        const branches = caseStatement.branches.map((branch) => generateBranch(branch));
+        return `case ${predicate} of
+${prefixLines(branches.join("\n"), 4)}
+`.trim();
+      }
+      var typeMap = {
+        boolean: "Bool",
+        number: "Float",
+        string: "String",
+        void: "String"
+      };
+      function typeMapNameLookup(name) {
+        if (Object.keys(typeMap).indexOf(name) === -1) {
+          return name;
+        }
+        return typeMap[name];
+      }
+      function generateTopLevelType(type_) {
+        switch (type_.kind) {
+          case "GenericType": {
+            return generateType(type_);
+          }
+          case "FixedType": {
+            if (type_.name === "List") {
+              return generateType(type_);
+            }
+            const args = type_.args.filter((type_2) => type_2.kind === "GenericType" || type_2.kind === "FixedType");
+            if (args.length === 0) {
+              return typeMapNameLookup(type_.name);
+            }
+            return `${type_.name} ${args.map(generateType).join(" ")}`;
+          }
+          case "FunctionType": {
+            return generateType(type_);
+          }
+        }
+      }
+      function generateType(type_) {
+        switch (type_.kind) {
+          case "GenericType": {
+            return typeMapNameLookup(type_.name);
+          }
+          case "FixedType": {
+            if (type_.name === "List") {
+              if (type_.args[0] && type_.args[0].kind === "GenericType") {
+                return "List " + generateType(type_.args[0]);
+              }
+              const fixedArgs = type_.args.filter((type_2) => type_2.kind === "FixedType");
+              if (fixedArgs.length === 0) {
+                return "List any";
+              } else if (fixedArgs.length === 1) {
+                return `List ${generateType(fixedArgs[0])}`;
+              }
+              return `List (${fixedArgs.map(generateType).join(" | ")})`;
+            }
+            const args = type_.args.filter((type_2) => type_2.kind === "GenericType");
+            if (args.length === 0) {
+              return typeMapNameLookup(type_.name);
+            }
+            return `${type_.name} ${args.map(generateType).join(" ")}`;
+          }
+          case "FunctionType": {
+            return "(" + type_.args.map(generateType).join(" -> ") + ")";
+          }
+        }
+      }
+      function generateAddition(addition) {
+        const left = generateExpression(addition.left);
+        const right = generateExpression(addition.right);
+        if (addition.left.kind === "StringValue" || addition.right.kind === "StringValue") {
+          return `${left} ++ ${right}`;
+        }
+        return `${left} + ${right}`;
+      }
+      function generateSubtraction(subtraction) {
+        const left = generateExpression(subtraction.left);
+        const right = generateExpression(subtraction.right);
+        return `${left} - ${right}`;
+      }
+      function generateMultiplication(multiplication) {
+        const left = generateExpression(multiplication.left);
+        const right = generateExpression(multiplication.right);
+        return `${left} * ${right}`;
+      }
+      function generateDivision(division) {
+        const left = generateExpression(division.left);
+        const right = generateExpression(division.right);
+        return `${left} / ${right}`;
+      }
+      function generateLeftPipe(leftPipe) {
+        const left = generateExpression(leftPipe.left);
+        const right = generateExpression(leftPipe.right);
+        return `${left}
+    |> ${right}`;
+      }
+      function generateRightPipe(rightPipe) {
+        const left = generateExpression(rightPipe.left);
+        const right = generateExpression(rightPipe.right);
+        return `${left}
+    <| ${right}`;
+      }
+      var moduleLookup = {
+        "console.log": `Debug.log ""`
+      };
+      function generateModuleReference(moduleReference) {
+        const left = moduleReference.path.join(".");
+        const right = generateExpression(moduleReference.value);
+        const value = `${left}.${right}`;
+        if (Object.keys(moduleLookup).indexOf(value) === -1) {
+          return value;
+        }
+        return moduleLookup[value];
+      }
+      function generateFunctionCall(functionCall) {
+        if (functionCall.args.length === 0)
+          return `${functionCall.name}`;
+        const right = functionCall.args.map(generateExpression).join(" ");
+        return `${functionCall.name} ${right}`;
+      }
+      function generateLambda(lambda) {
+        const args = lambda.args.map((arg) => `${arg}`).join(" ");
+        const body = generateExpression(lambda.body);
+        return `
+\\${args} -> ${body}
+`.trim();
+      }
+      function generateLambdaCall(lambdaCall) {
+        const args = lambdaCall.lambda.args.map((arg) => `${arg}: any`).join(", ");
+        const argsValues = lambdaCall.args.map(generateExpression).join(", ");
+        const body = generateExpression(lambdaCall.lambda.body);
+        return `
+(function(${args}) {
+    return ${body};
+})(${argsValues})
+`.trim();
+      }
+      function generateEquality(equality) {
+        const left = generateExpression(equality.left);
+        const right = generateExpression(equality.right);
+        return `${left} == ${right}`;
+      }
+      function generateInEquality(inEquality) {
+        const left = generateExpression(inEquality.left);
+        const right = generateExpression(inEquality.right);
+        return `${left} != ${right}`;
+      }
+      function generateLessThan(lessThan) {
+        const left = generateExpression(lessThan.left);
+        const right = generateExpression(lessThan.right);
+        return `${left} < ${right}`;
+      }
+      function generateLessThanOrEqual(lessThanOrEqual) {
+        const left = generateExpression(lessThanOrEqual.left);
+        const right = generateExpression(lessThanOrEqual.right);
+        return `${left} <= ${right}`;
+      }
+      function generateGreaterThan(greaterThan) {
+        const left = generateExpression(greaterThan.left);
+        const right = generateExpression(greaterThan.right);
+        return `${left} > ${right}`;
+      }
+      function generateGreaterThanOrEqual(greaterThanOrEqual) {
+        const left = generateExpression(greaterThanOrEqual.left);
+        const right = generateExpression(greaterThanOrEqual.right);
+        return `${left} >= ${right}`;
+      }
+      function generateAnd(and) {
+        const left = generateExpression(and.left);
+        const right = generateExpression(and.right);
+        return `${left} && ${right}`;
+      }
+      function generateOr(or) {
+        const left = generateExpression(or.left);
+        const right = generateExpression(or.right);
+        return `${left} || ${right}`;
+      }
+      function generateExpression(expression) {
+        switch (expression.kind) {
+          case "Value":
+            return generateValue(expression);
+          case "StringValue":
+            return generateStringValue(expression);
+          case "FormatStringValue":
+            return generateFormatStringValue(expression);
+          case "ListValue":
+            return generateListValue(expression);
+          case "ListRange":
+            return generateListRange(expression);
+          case "ObjectLiteral":
+            return generateObjectLiteral(expression);
+          case "IfStatement":
+            return generateIfStatement(expression);
+          case "CaseStatement":
+            return generateCaseStatement(expression);
+          case "Addition":
+            return generateAddition(expression);
+          case "Subtraction":
+            return generateSubtraction(expression);
+          case "Multiplication":
+            return generateMultiplication(expression);
+          case "Division":
+            return generateDivision(expression);
+          case "And":
+            return generateAnd(expression);
+          case "Or":
+            return generateOr(expression);
+          case "LeftPipe":
+            return generateLeftPipe(expression);
+          case "RightPipe":
+            return generateRightPipe(expression);
+          case "ModuleReference":
+            return generateModuleReference(expression);
+          case "FunctionCall":
+            return generateFunctionCall(expression);
+          case "Lambda":
+            return generateLambda(expression);
+          case "LambdaCall":
+            return generateLambdaCall(expression);
+          case "Constructor":
+            return generateConstructor(expression);
+          case "Equality":
+            return generateEquality(expression);
+          case "InEquality":
+            return generateInEquality(expression);
+          case "LessThan":
+            return generateLessThan(expression);
+          case "LessThanOrEqual":
+            return generateLessThanOrEqual(expression);
+          case "GreaterThan":
+            return generateGreaterThan(expression);
+          case "GreaterThanOrEqual":
+            return generateGreaterThanOrEqual(expression);
+        }
+      }
+      function generateFunction(function_) {
+        const functionArgumentsTypes = function_.args.map((arg) => {
+          switch (arg.kind) {
+            case "FunctionArg":
+              return generateType(arg.type);
+            case "AnonFunctionArg":
+              return generateType(arg.type);
+          }
+        }).join(" -> ");
+        const functionArguments = function_.args.map((arg) => {
+          switch (arg.kind) {
+            case "FunctionArg":
+              return arg.name;
+            case "AnonFunctionArg":
+              return "_" + arg.index;
+          }
+        }).join(" ");
+        const maybeLetBody = function_.letBody.length > 0 ? prefixLines("\nlet", 4) + "\n" + prefixLines(function_.letBody.map(generateBlock).join("\n\n"), 8) + prefixLines("\nin", 4) : "";
+        const returnType = generateTopLevelType(function_.returnType);
+        const body = generateExpression(function_.body);
+        const prefixedBody = prefixLines(body, maybeLetBody === "" ? 4 : 8);
+        return `
+${function_.name}: ${functionArgumentsTypes} -> ${returnType}
+${function_.name} ${functionArguments} =${maybeLetBody}
+${prefixedBody}
+`.trim();
+      }
+      function generateConst(constDef) {
+        const body = prefixLines(generateExpression(constDef.value), 4);
+        const typeDef = generateTopLevelType(constDef.type);
+        return `
+${constDef.name}: ${typeDef}
+${constDef.name} =
+${body}
+`.trim();
+      }
+      function generateImportBlock(imports) {
+        return imports.modules.map((module2) => {
+          const moduleName = module2.namespace === "Global" ? module2.name : module2.name.replace("./", "").split("/").join(".").split(`"`).join("");
+          if (module2.alias.kind === "just")
+            return `import ${moduleName} as ${module2.alias.value}`;
+          if (module2.exposing.length > 0)
+            return `import ${moduleName} exposing ( ${module2.exposing.join(", ")} )`;
+          return `import ${moduleName}`;
+        }).join("\n");
+      }
+      function generateExportBlock(moduleName, names) {
+        moduleName = moduleName.toUpperCase()[0] + moduleName.slice(1);
+        if (names.length === 0)
+          return `module ${moduleName} exposing (..)`;
+        return `module ${moduleName} exposing (${names.join(", ")})`;
+      }
+      function generateBlock(syntax) {
+        switch (syntax.kind) {
+          case "Import":
+            return generateImportBlock(syntax);
+          case "Export":
+            return "";
+          case "UnionType":
+            return generateUnionType(syntax);
+          case "TypeAlias":
+            return generateTypeAlias(syntax);
+          case "Function":
+            return generateFunction(syntax);
+          case "Const":
+            return generateConst(syntax);
+          case "Comment":
+          case "MultilineComment":
+            return "";
+        }
+      }
+      function generateElm2(module2) {
+        const exports2 = [];
+        module2.body.filter((block) => block.kind === "Export").forEach((block) => exports2.push(...block.names));
+        return [
+          generateExportBlock(module2.name, exports2),
+          ...module2.body.map(generateBlock)
+        ].filter((line) => line.trim().length > 0).join("\n\n");
+      }
+      exports.generateElm = generateElm2;
+    }
+  });
+
   // node_modules/derw/build/utils.js
   var require_utils = __commonJS({
     "node_modules/derw/build/utils.js"(exports) {
@@ -2052,37 +2865,37 @@ function ${type}(args) {
         }
       }
       function rootTypeTokensToString(tokens) {
-        const output2 = [];
+        const output = [];
         let index = 0;
         for (const token of tokens) {
           switch (token.kind) {
             case "BaseTypeToken": {
               token.body.forEach((value) => {
                 if (value.kind === "BaseTypeToken") {
-                  output2.push(typeTokenToString(OpenBracketToken()));
-                  value.body.forEach((v) => output2.push(typeTokenToString(v)));
-                  output2.push(typeTokenToString(CloseBracketToken()));
+                  output.push(typeTokenToString(OpenBracketToken()));
+                  value.body.forEach((v) => output.push(typeTokenToString(v)));
+                  output.push(typeTokenToString(CloseBracketToken()));
                 } else {
-                  output2.push(typeTokenToString(value));
+                  output.push(typeTokenToString(value));
                 }
               });
               break;
             }
             case "FunctionTypeToken": {
-              output2.push(typeTokenToString(OpenBracketToken()));
+              output.push(typeTokenToString(OpenBracketToken()));
               token.body.forEach((value) => {
-                output2.push(typeTokenToString(value));
+                output.push(typeTokenToString(value));
               });
-              output2.push(typeTokenToString(CloseBracketToken()));
+              output.push(typeTokenToString(CloseBracketToken()));
               break;
             }
           }
           if (index < tokens.length - 1) {
-            output2.push(typeTokenToString(ArrowToken()));
+            output.push(typeTokenToString(ArrowToken()));
           }
           index++;
         }
-        return output2.join(" ");
+        return output.join(" ");
       }
       exports.rootTypeTokensToString = rootTypeTokensToString;
       function nextNonWhitespace(tokens) {
@@ -2547,11 +3360,11 @@ function ${type}(args) {
               }
               const errors = [];
               const correct = [];
-              for (const parsed2 of parsedTypes) {
-                if (parsed2.kind === "ok") {
-                  correct.push(parsed2.value);
+              for (const parsed of parsedTypes) {
+                if (parsed.kind === "ok") {
+                  correct.push(parsed.value);
                 } else {
-                  errors.push(parsed2.error);
+                  errors.push(parsed.error);
                 }
               }
               if (errors.length > 0) {
@@ -2568,11 +3381,11 @@ function ${type}(args) {
             const parsedTypes = splitOnArrow(token.body).map((x) => parseTypeToken(tokens_1.BaseTypeToken(x)));
             const errors = [];
             const correct = [];
-            for (const parsed2 of parsedTypes) {
-              if (parsed2.kind === "ok") {
-                correct.push(parsed2.value);
+            for (const parsed of parsedTypes) {
+              if (parsed.kind === "ok") {
+                correct.push(parsed.value);
               } else {
-                errors.push(parsed2.error);
+                errors.push(parsed.error);
               }
             }
             if (errors.length > 0) {
@@ -4386,6 +5199,566 @@ ${definitions.join("\n\n")}
     }
   });
 
+  // node_modules/derw/build/ts_generator.js
+  var require_ts_generator = __commonJS({
+    "node_modules/derw/build/ts_generator.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.generateTypescript = void 0;
+      var builtins_1 = require_builtins();
+      var types_1 = require_types();
+      var utils_1 = require_utils();
+      function prefixLines(body, indent) {
+        return body.split("\n").map((line) => " ".repeat(indent) + line).join("\n");
+      }
+      function generateUnionType(syntax) {
+        const tagCreators = syntax.tags.map((tag) => {
+          const typeDefArgs = tag.args.map((arg) => arg.name + ": " + generateType(arg.type) + ";").join("\n    ");
+          const funcDefArgs = tag.args.map((arg) => arg.name + ": " + generateType(arg.type)).join(", ");
+          const generatedType = generateType(types_1.FixedType(tag.name, tag.args.map((arg) => arg.type).filter((arg) => {
+            if (arg.kind === "FixedType") {
+              if (builtins_1.isBuiltinType(arg.name))
+                return false;
+            }
+            if (arg.kind === "GenericType") {
+              if (builtins_1.isBuiltinType(arg.name))
+                return false;
+            }
+            return true;
+          })));
+          const funcDefArgsStr = tag.args.length > 0 ? `{ ${funcDefArgs} }` : "{}";
+          return `
+type ${generatedType} = {
+    kind: "${tag.name}";${typeDefArgs.length === 0 ? "" : "\n    " + typeDefArgs}
+};
+
+function ${generatedType}(args: ${funcDefArgsStr}): ${generatedType} {
+    return {
+        kind: "${tag.name}",
+        ...args,
+    };
+}`;
+        }).join("\n");
+        const tags = syntax.tags.map((tag) => {
+          return generateType(types_1.FixedType(tag.name, tag.args.map((arg) => arg.type).filter((arg) => {
+            if (arg.kind === "FixedType") {
+              if (builtins_1.isBuiltinType(arg.name))
+                return false;
+            }
+            if (arg.kind === "GenericType") {
+              if (builtins_1.isBuiltinType(arg.name))
+                return false;
+            }
+            return true;
+          })));
+        }).join(" | ");
+        return `
+${tagCreators}
+
+type ${generateType(syntax.type)} = ${tags};
+`.trim();
+      }
+      function generateProperty(syntax) {
+        return `${syntax.name}: ${generateType(syntax.type)}`;
+      }
+      function generateTypeAlias(syntax) {
+        const generatedProperties = syntax.properties.map(generateProperty);
+        const properties = generatedProperties.length === 0 ? "" : "    " + generatedProperties.join(";\n    ") + ";";
+        const type = generateType(syntax.type);
+        const args = generatedProperties.length === 0 ? " " : " " + generatedProperties.join(", ") + " ";
+        return `
+type ${type} = {
+${properties}
+}
+
+function ${type}(args: {${args}}): ${type} {
+    return {
+        ...args,
+    };
+}
+`.trim();
+      }
+      function generateField(field) {
+        const value = generateExpression(field.value);
+        if (field.name === value) {
+          return `${field.name}`;
+        }
+        return `${field.name}: ${value}`;
+      }
+      function generateObjectLiteral(literal) {
+        if (literal.fields.length === 0)
+          return `{ }`;
+        let fields = literal.fields.map(generateField).join(",\n    ");
+        if (literal.fields.length === 1)
+          return `{ ${fields} }`;
+        return `{
+    ${fields}
+}`;
+      }
+      function generateValue(value) {
+        return value.body;
+      }
+      function generateStringValue(string) {
+        return `"${string.body}"`;
+      }
+      function generateFormatStringValue(string) {
+        return `\`${string.body}\``;
+      }
+      function generateListValue(list) {
+        if (list.items.length === 0)
+          return `[ ]`;
+        if (list.items.length === 1)
+          return `[ ${generateExpression(list.items[0])} ]`;
+        return `[ ${list.items.map(generateExpression).join(", ")} ]`;
+      }
+      function generateListRange(list) {
+        const gap = `${list.end.body} - ${list.start.body} + 1`;
+        return `Array.from({ length: ${gap} }, (x, i) => i + ${list.start.body})`;
+      }
+      function generateIfStatement(ifStatement) {
+        const isSimpleIfBody = types_1.isSimpleValue(ifStatement.ifBody.kind);
+        const isSimpleElseBody = types_1.isSimpleValue(ifStatement.elseBody.kind);
+        const ifBodyPrefix = isSimpleIfBody ? "return " : "";
+        const elseBodyPrefix = isSimpleElseBody ? "return " : "";
+        const ifBody = generateExpression(ifStatement.ifBody);
+        const indentedIfBody = ifBody.split("\n").length === 1 ? ifBody : [
+          ifBody.split("\n")[0],
+          prefixLines(ifBody.split("\n").slice(1).join("\n"), 4)
+        ].join("\n");
+        const elseBody = generateExpression(ifStatement.elseBody);
+        const indentedElseBody = elseBody.split("\n").length === 1 ? elseBody : [
+          elseBody.split("\n")[0],
+          prefixLines(elseBody.split("\n").slice(1).join("\n"), 4)
+        ].join("\n");
+        return `if (${generateExpression(ifStatement.predicate)}) {
+    ${ifBodyPrefix}${indentedIfBody};
+} else {
+    ${elseBodyPrefix}${indentedElseBody};
+}`;
+      }
+      function generateConstructor(constructor) {
+        if (constructor.pattern.fields.length === 0)
+          return `${constructor.constructor}({ })`;
+        return `${constructor.constructor}(${generateObjectLiteral(constructor.pattern)})`;
+      }
+      function generateBranch(predicate, branch) {
+        const body = generateExpression(branch.body);
+        const returnWrapper = types_1.isSimpleValue(branch.body.kind) ? "return " : "";
+        const maybeLetBody = branch.letBody.length > 0 ? "\n" + prefixLines(branch.letBody.map(generateBlock).join("\n"), 4) : "";
+        switch (branch.pattern.kind) {
+          case "Destructure": {
+            const pattern = branch.pattern.pattern.trim().length > 0 ? `
+    const ${branch.pattern.pattern} = ${predicate};` : "";
+            return `case "${branch.pattern.constructor}": {${pattern}${maybeLetBody}
+    ${returnWrapper}${body};
+}`;
+          }
+          case "StringValue": {
+            return `case "${branch.pattern.body}": {${maybeLetBody}
+    ${returnWrapper}${body};
+}`;
+          }
+          case "Default": {
+            return `default: {${maybeLetBody}
+    ${returnWrapper}${body};
+}`;
+          }
+        }
+      }
+      function generateCaseStatement(caseStatement) {
+        const predicate = generateExpression(caseStatement.predicate);
+        const branches = caseStatement.branches.map((branch) => generateBranch("_res", branch));
+        const isString = caseStatement.branches.filter((branch) => branch.pattern.kind === "StringValue").length > 0;
+        if (isString) {
+          return `
+const _res = ${predicate};
+switch (_res) {
+${prefixLines(branches.join("\n"), 4)}
+}`.trim();
+        }
+        return `
+const _res = ${predicate};
+switch (_res.kind) {
+${prefixLines(branches.join("\n"), 4)}
+}`.trim();
+      }
+      function generateTopLevelType(type_) {
+        switch (type_.kind) {
+          case "GenericType": {
+            return generateType(type_);
+          }
+          case "FixedType": {
+            if (type_.name === "List") {
+              if (type_.args[0] && type_.args[0].kind === "GenericType") {
+                return generateTopLevelType(type_.args[0]) + "[]";
+              }
+              const fixedArgs = type_.args.filter((type_2) => type_2.kind === "FixedType");
+              if (fixedArgs.length === 0) {
+                return "any[]";
+              } else if (fixedArgs.length === 1) {
+                return `${generateTopLevelType(fixedArgs[0])}[]`;
+              }
+              return `(${fixedArgs.map(generateTopLevelType).join(" | ")})[]`;
+            }
+            const args = type_.args.filter((type_2) => type_2.kind === "GenericType" || type_2.kind === "FixedType");
+            if (args.length === 0) {
+              return type_.name;
+            }
+            return `${type_.name}<${args.map(generateType).join(", ")}>`;
+          }
+          case "FunctionType": {
+            return generateType(type_);
+          }
+        }
+      }
+      function generateType(type_) {
+        switch (type_.kind) {
+          case "GenericType": {
+            return type_.name;
+          }
+          case "FixedType": {
+            if (type_.name === "List") {
+              if (type_.args[0] && type_.args[0].kind === "GenericType") {
+                return generateType(type_.args[0]) + "[]";
+              }
+              const fixedArgs = type_.args.filter((type_2) => type_2.kind === "FixedType");
+              if (fixedArgs.length === 0) {
+                return "any[]";
+              } else if (fixedArgs.length === 1) {
+                return `${generateType(fixedArgs[0])}[]`;
+              }
+              return `(${fixedArgs.map(generateType).join(" | ")})[]`;
+            }
+            const args = type_.args.filter((type_2) => type_2.kind === "GenericType");
+            if (args.length === 0) {
+              return type_.name;
+            }
+            return `${type_.name}<${args.map(generateType).join(", ")}>`;
+          }
+          case "FunctionType": {
+            const parts = [];
+            let index = 0;
+            for (const typePart of type_.args.slice(0, -1)) {
+              parts.push(`arg${index}: ${generateType(typePart)}`);
+              index++;
+            }
+            return "(" + parts.join(", ") + ") => " + generateType(type_.args[type_.args.length - 1]);
+          }
+        }
+      }
+      function generateAddition(addition) {
+        const left = generateExpression(addition.left);
+        const right = generateExpression(addition.right);
+        return `${left} + ${right}`;
+      }
+      function generateSubtraction(subtraction) {
+        const left = generateExpression(subtraction.left);
+        const right = generateExpression(subtraction.right);
+        return `${left} - ${right}`;
+      }
+      function generateMultiplication(multiplication) {
+        const left = generateExpression(multiplication.left);
+        const right = generateExpression(multiplication.right);
+        return `${left} * ${right}`;
+      }
+      function generateDivision(division) {
+        const left = generateExpression(division.left);
+        const right = generateExpression(division.right);
+        return `${left} / ${right}`;
+      }
+      function addArgsToModuleReference(moduleReference, newArgs) {
+        switch (moduleReference.value.kind) {
+          case "FunctionCall": {
+            const args = [...moduleReference.value.args, ...newArgs];
+            const innerFunction = types_1.FunctionCall(moduleReference.value.name, args);
+            return types_1.ModuleReference(moduleReference.path, innerFunction);
+          }
+          case "Value": {
+            const args = [...newArgs];
+            const innerFunction = types_1.FunctionCall(moduleReference.value.body, args);
+            return types_1.ModuleReference(moduleReference.path, innerFunction);
+          }
+        }
+        return moduleReference;
+      }
+      function flattenLeftPipe(leftPipe) {
+        const left = leftPipe.left;
+        const right = leftPipe.right;
+        switch (right.kind) {
+          case "FunctionCall": {
+            const args = [...right.args, left];
+            return types_1.FunctionCall(right.name, args);
+          }
+          case "Value": {
+            const args = [left];
+            return types_1.FunctionCall(right.body, args);
+          }
+          case "ModuleReference": {
+            return addArgsToModuleReference(right, [left]);
+          }
+          case "Lambda": {
+            return types_1.LambdaCall(right, [left]);
+          }
+          case "LeftPipe": {
+            let innerFunction = null;
+            switch (right.left.kind) {
+              case "FunctionCall": {
+                const args = [...right.left.args, left];
+                innerFunction = types_1.FunctionCall(right.left.name, args);
+                break;
+              }
+              case "Value": {
+                const args = [left];
+                innerFunction = types_1.FunctionCall(right.left.body, args);
+                break;
+              }
+              case "ModuleReference": {
+                innerFunction = addArgsToModuleReference(right.left, [
+                  left
+                ]);
+                break;
+              }
+              case "LeftPipe": {
+                return right;
+              }
+            }
+            if (innerFunction === null)
+              return right.left;
+            return flattenLeftPipe(types_1.LeftPipe(innerFunction, right.right));
+          }
+        }
+      }
+      function generateLeftPipe(leftPipe) {
+        return generateExpression(flattenLeftPipe(leftPipe));
+      }
+      function generateRightPipe(rightPipe) {
+        const left = generateExpression(rightPipe.left);
+        const right = generateExpression(rightPipe.right);
+        return `${left}(${right})`;
+      }
+      function generateModuleReference(moduleReference) {
+        const left = moduleReference.path.join(".");
+        const right = generateExpression(moduleReference.value);
+        return `${left}.${right}`;
+      }
+      function generateFunctionCall(functionCall) {
+        const right = functionCall.args.map(generateExpression).join(", ");
+        return `${functionCall.name}(${right})`;
+      }
+      function generateLambda(lambda) {
+        const args = lambda.args.map((arg) => `${arg}: any`).join(", ");
+        const body = generateExpression(lambda.body);
+        return `
+function(${args}) {
+    return ${body};
+}
+`.trim();
+      }
+      function generateLambdaCall(lambdaCall) {
+        const args = lambdaCall.lambda.args.map((arg) => `${arg}: any`).join(", ");
+        const argsValues = lambdaCall.args.map(generateExpression).join(", ");
+        const body = generateExpression(lambdaCall.lambda.body);
+        return `
+(function(${args}) {
+    return ${body};
+})(${argsValues})
+`.trim();
+      }
+      function generateEquality(equality) {
+        const left = generateExpression(equality.left);
+        const right = generateExpression(equality.right);
+        return `${left} === ${right}`;
+      }
+      function generateInEquality(inEquality) {
+        const left = generateExpression(inEquality.left);
+        const right = generateExpression(inEquality.right);
+        return `${left} !== ${right}`;
+      }
+      function generateLessThan(lessThan) {
+        const left = generateExpression(lessThan.left);
+        const right = generateExpression(lessThan.right);
+        return `${left} < ${right}`;
+      }
+      function generateLessThanOrEqual(lessThanOrEqual) {
+        const left = generateExpression(lessThanOrEqual.left);
+        const right = generateExpression(lessThanOrEqual.right);
+        return `${left} <= ${right}`;
+      }
+      function generateGreaterThan(greaterThan) {
+        const left = generateExpression(greaterThan.left);
+        const right = generateExpression(greaterThan.right);
+        return `${left} > ${right}`;
+      }
+      function generateGreaterThanOrEqual(greaterThanOrEqual) {
+        const left = generateExpression(greaterThanOrEqual.left);
+        const right = generateExpression(greaterThanOrEqual.right);
+        return `${left} >= ${right}`;
+      }
+      function generateAnd(and) {
+        const left = generateExpression(and.left);
+        const right = generateExpression(and.right);
+        return `${left} && ${right}`;
+      }
+      function generateOr(or) {
+        const left = generateExpression(or.left);
+        const right = generateExpression(or.right);
+        return `${left} || ${right}`;
+      }
+      function generateExpression(expression) {
+        switch (expression.kind) {
+          case "Value":
+            return generateValue(expression);
+          case "StringValue":
+            return generateStringValue(expression);
+          case "FormatStringValue":
+            return generateFormatStringValue(expression);
+          case "ListValue":
+            return generateListValue(expression);
+          case "ListRange":
+            return generateListRange(expression);
+          case "ObjectLiteral":
+            return generateObjectLiteral(expression);
+          case "IfStatement":
+            return generateIfStatement(expression);
+          case "CaseStatement":
+            return generateCaseStatement(expression);
+          case "Addition":
+            return generateAddition(expression);
+          case "Subtraction":
+            return generateSubtraction(expression);
+          case "Multiplication":
+            return generateMultiplication(expression);
+          case "Division":
+            return generateDivision(expression);
+          case "And":
+            return generateAnd(expression);
+          case "Or":
+            return generateOr(expression);
+          case "LeftPipe":
+            return generateLeftPipe(expression);
+          case "RightPipe":
+            return generateRightPipe(expression);
+          case "ModuleReference":
+            return generateModuleReference(expression);
+          case "FunctionCall":
+            return generateFunctionCall(expression);
+          case "Lambda":
+            return generateLambda(expression);
+          case "LambdaCall":
+            return generateLambdaCall(expression);
+          case "Constructor":
+            return generateConstructor(expression);
+          case "Equality":
+            return generateEquality(expression);
+          case "InEquality":
+            return generateInEquality(expression);
+          case "LessThan":
+            return generateLessThan(expression);
+          case "LessThanOrEqual":
+            return generateLessThanOrEqual(expression);
+          case "GreaterThan":
+            return generateGreaterThan(expression);
+          case "GreaterThanOrEqual":
+            return generateGreaterThanOrEqual(expression);
+        }
+      }
+      function collectTypeArguments(type_) {
+        switch (type_.kind) {
+          case "GenericType":
+            if (builtins_1.isBuiltinType(type_.name))
+              return [];
+            return [type_.name];
+          case "FixedType": {
+            if (builtins_1.isBuiltinType(type_.name)) {
+              return [];
+            }
+          }
+          case "FunctionType": {
+            const args = type_.args.map(collectTypeArguments);
+            return [].concat(...args);
+          }
+        }
+      }
+      function generateFunction(function_) {
+        const functionArguments = function_.args.map((arg) => {
+          switch (arg.kind) {
+            case "FunctionArg":
+              return arg.name + ": " + generateTopLevelType(arg.type);
+            case "AnonFunctionArg":
+              return "_" + arg.index + ": " + generateTopLevelType(arg.type);
+          }
+        }).join(", ");
+        const maybeLetBody = function_.letBody.length > 0 ? "\n" + prefixLines(function_.letBody.map(generateBlock).join("\n"), 4) : "";
+        const returnType = generateTopLevelType(function_.returnType);
+        const isSimpleBody = types_1.isSimpleValue(function_.body.kind);
+        const bodyPrefix = isSimpleBody ? "return " : "";
+        const bodySuffix = isSimpleBody ? ";" : "";
+        const body = bodyPrefix + generateExpression(function_.body) + bodySuffix;
+        const prefixedBody = prefixLines(body, 4);
+        const typeArguments = [].concat(...function_.args.map((arg) => collectTypeArguments(arg.type)), collectTypeArguments(function_.returnType)).filter((value, index, arr) => arr.indexOf(value) === index);
+        const typeArgumentsString = typeArguments.length === 0 ? "" : `<${typeArguments.join(", ")}>`;
+        return `
+function ${function_.name}${typeArgumentsString}(${functionArguments}): ${returnType} {${maybeLetBody}
+${prefixedBody}
+}`.trim();
+      }
+      function generateConst(constDef) {
+        const body = generateExpression(constDef.value);
+        const typeDef = generateTopLevelType(constDef.type);
+        return `
+const ${constDef.name}: ${typeDef} = ${body};
+`.trim();
+      }
+      function generateImportBlock(imports) {
+        return imports.modules.map((module2) => {
+          if (module2.namespace === "Relative") {
+            const withoutQuotes = module2.name.slice(1, -1);
+            const name2 = module2.alias.kind === "just" ? module2.alias.value : utils_1.getNameFromPath(withoutQuotes);
+            if (module2.exposing.length === 0) {
+              return `import * as ${name2} from ${module2.name};`;
+            } else {
+              return `import { ${module2.exposing.join(", ")} } from ${module2.name};`;
+            }
+          }
+          const name = module2.alias.kind === "just" ? module2.alias.value : module2.name;
+          if (module2.exposing.length === 0) {
+            return `import * as ${name} from "${module2.name}";`;
+          } else {
+            return `import { ${module2.exposing.join(", ")} } from "${module2.name}";`;
+          }
+        }).join("\n");
+      }
+      function generateExportBlock(exports2) {
+        return exports2.names.map((name) => {
+          return `export { ${name} };`;
+        }).join("\n");
+      }
+      function generateBlock(syntax) {
+        switch (syntax.kind) {
+          case "Import":
+            return generateImportBlock(syntax);
+          case "Export":
+            return generateExportBlock(syntax);
+          case "UnionType":
+            return generateUnionType(syntax);
+          case "TypeAlias":
+            return generateTypeAlias(syntax);
+          case "Function":
+            return generateFunction(syntax);
+          case "Const":
+            return generateConst(syntax);
+          case "Comment":
+          case "MultilineComment":
+            return "";
+        }
+      }
+      function generateTypescript2(module2) {
+        return module2.body.map(generateBlock).filter((line) => line.length > 0).join("\n\n");
+      }
+      exports.generateTypescript = generateTypescript2;
+    }
+  });
+
   // node_modules/codeflask/build/codeflask.module.js
   var BACKGROUND_COLOR = "#fff";
   var LINE_HEIGHT = "20px";
@@ -4785,11 +6158,15 @@ ${definitions.join("\n\n")}
   var codeflask_module_default = CodeFlask;
 
   // src/Codeflask_kernel.ts
+  var import_derw_generator = __toESM(require_derw_generator());
+  var import_elm_generator = __toESM(require_elm_generator());
   var import_js_generator = __toESM(require_js_generator());
   var import_parser = __toESM(require_parser());
+  var import_ts_generator = __toESM(require_ts_generator());
   var CodeEditor = class extends HTMLElement {
     constructor() {
       super();
+      this.mode = "typescript";
       this.attachShadow({ mode: "open" });
       if (this.shadowRoot) {
         this.shadowRoot.innerHTML += `
@@ -4804,6 +6181,7 @@ ${definitions.join("\n\n")}
 
     * {
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+        font-size: 20px !important;
     }
 </style>`;
       }
@@ -4855,13 +6233,41 @@ ${definitions.join("\n\n")}
         if (this.getAttribute("value") !== code) {
           this.setAttribute("value", code);
           this.dispatchEvent(new Event("input"));
+          if (this.id === "code-editor") {
+            this.renderCode(code);
+          }
         }
-        const parsed = (0, import_parser.parse)(code, "Main");
-        const js = (0, import_js_generator.generateJavascript)(parsed);
-        const output = document.getElementById("output");
-        console.log("running", js);
-        eval(js);
       });
+    }
+    renderCode(code) {
+      const parsed = (0, import_parser.parse)(code, "Main");
+      const output = document.getElementById("output");
+      let generated = "";
+      switch (this.mode) {
+        case "javascript": {
+          generated = (0, import_js_generator.generateJavascript)(parsed);
+          break;
+        }
+        case "typescript": {
+          generated = (0, import_ts_generator.generateTypescript)(parsed);
+          break;
+        }
+        case "elm": {
+          generated = (0, import_elm_generator.generateElm)(parsed);
+          break;
+        }
+        case "derw": {
+          generated = (0, import_derw_generator.generateDerw)(parsed);
+          break;
+        }
+      }
+      if (output)
+        output.setAttribute("language", "javascript");
+      if (output)
+        output.value = generated;
+    }
+    onModeUpdate() {
+      this.renderCode(this.getAttribute("value") || "");
     }
     disconnectedCallback() {
       var _a;
@@ -4870,10 +6276,10 @@ ${definitions.join("\n\n")}
     get value() {
       return this.getAttribute("value") || "";
     }
-    set value(code2) {
-      this.setAttribute("value", code2);
-      if (this.editor && this.editor.getCode() !== code2) {
-        this.editor.updateCode(code2);
+    set value(code) {
+      this.setAttribute("value", code);
+      if (this.editor && this.editor.getCode() !== code) {
+        this.editor.updateCode(code);
       }
     }
   };
@@ -4883,6 +6289,42 @@ ${definitions.join("\n\n")}
   function newEditor(root) {
     register("code-editor");
   }
+  function clearActive() {
+    for (const elem of document.getElementsByClassName("active")) {
+      elem.classList.toggle("active");
+    }
+  }
+  function setMode(mode) {
+    var _a, _b, _c, _d;
+    const editor = document.getElementById("code-editor");
+    if (editor) {
+      editor.mode = mode;
+      editor.onModeUpdate();
+    }
+    clearActive();
+    switch (mode) {
+      case "elm": {
+        (_a = document.getElementById("view-elm")) == null ? void 0 : _a.classList.toggle("active");
+        break;
+      }
+      case "javascript": {
+        (_b = document.getElementById("view-js")) == null ? void 0 : _b.classList.toggle("active");
+        break;
+      }
+      case "typescript": {
+        (_c = document.getElementById("view-ts")) == null ? void 0 : _c.classList.toggle("active");
+        break;
+      }
+      case "derw": {
+        (_d = document.getElementById("view-derw")) == null ? void 0 : _d.classList.toggle("active");
+        break;
+      }
+    }
+  }
+  window.viewElm = () => setMode("elm");
+  window.viewJavascript = () => setMode("javascript");
+  window.viewTypescript = () => setMode("typescript");
+  window.viewDerw = () => setMode("derw");
 
   // src/Main.ts
   var main = newEditor("root");

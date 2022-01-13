@@ -1,6 +1,6 @@
 import "./Codeflask_kernel" as codeflask
 
+exposing (viewElm)
+
 main: any
 main = codeflask.newEditor "root"
-
-
