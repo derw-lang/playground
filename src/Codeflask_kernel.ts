@@ -1,9 +1,10 @@
 import CodeFlask from "codeflask";
-import { generateDerw } from "derw/build/derw_generator";
-import { generateElm } from "derw/build/elm_generator";
-import { generateJavascript } from "derw/build/js_generator";
+import { generateDerw } from "derw/build/generators/derw";
+import { generateElm } from "derw/build/generators/elm";
+import { generateEnglish } from "derw/build/generators/english";
+import { generateJavascript } from "derw/build/generators/js";
+import { generateTypescript } from "derw/build/generators/ts";
 import { parse } from "derw/build/parser";
-import { generateTypescript } from "derw/build/ts_generator";
 
 export class CodeEditor extends HTMLElement {
     public container: any;
@@ -116,6 +117,11 @@ export class CodeEditor extends HTMLElement {
                 generated = generateDerw(parsed);
                 break;
             }
+            case "english": {
+                console.log("parsed", parsed);
+                generated = generateEnglish(parsed);
+                break;
+            }
         }
 
         if (output)
@@ -180,6 +186,11 @@ export function setMode(mode: string) {
         }
         case "derw": {
             document.getElementById("view-derw")?.classList.toggle("active");
+            break;
+        }
+        case "english": {
+            console.log("Switched mode to english");
+            document.getElementById("view-english")?.classList.toggle("active");
             break;
         }
     }

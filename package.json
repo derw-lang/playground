@@ -4,7 +4,7 @@
   "description": "Experiment with Derw in the browser",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "npx derw bundle --output main.js --entry src/Main.derw"
   },
   "repository": {
     "type": "git",
@@ -21,7 +21,7 @@
     "@types/codeflask": "^1.4.3",
     "@types/prismjs": "^1.16.6",
     "codeflask": "^1.4.1",
-    "derw": "^0.0.3-12",
+    "derw": "^0.0.3-17",
     "prismjs": "^1.26.0"
   }
 }
