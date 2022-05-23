@@ -118,15 +118,20 @@ export class CodeEditor extends HTMLElement {
                 break;
             }
             case "english": {
-                console.log("parsed", parsed);
                 generated = generateEnglish(parsed);
                 break;
             }
         }
 
-        if (output)
-            (output as CodeEditor).setAttribute("language", "javascript");
-        if (output) (output as CodeEditor).value = generated;
+        if (output) {
+            if (parsed.errors.length > 0) {
+                generated = `${parsed.errors.join("\n\n")}\n\n${generated}`;
+            }
+            if (generated.length > 0) {
+                (output as CodeEditor).setAttribute("language", "javascript");
+                (output as CodeEditor).value = generated;
+            }
+        }
     }
 
     onModeUpdate() {
