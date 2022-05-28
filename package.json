@@ -21,7 +21,7 @@
     "@types/codeflask": "^1.4.3",
     "@types/prismjs": "^1.16.6",
     "codeflask": "^1.4.1",
-    "derw": "^0.0.4",
+    "derw": "^0.0.5",
     "prismjs": "^1.26.0"
   }
 }
