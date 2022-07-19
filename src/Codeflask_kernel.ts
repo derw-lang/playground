@@ -139,6 +139,13 @@ export class CodeEditor extends HTMLElement {
         this.renderCode(this.getAttribute("value") || "");
     }
 
+    format() {
+        const code = this.getAttribute("value") || "";
+        const parsed = parse(code, "Main");
+        const generated = generateDerw(parsed);
+        this.value = generated;
+    }
+
     disconnectedCallback() {
         this.editor?.destroy();
     }
@@ -195,16 +202,25 @@ export function setMode(mode: string) {
             break;
         }
         case "english": {
-            console.log("Switched mode to english");
             document.getElementById("view-english")?.classList.toggle("active");
             break;
         }
     }
 }
 
-declare global {
-    interface Window {
-        view: any;
+export function format() {
+    const editor: any = document.getElementById("code-editor");
+    if (editor) {
+        editor.format();
     }
 }
+
+declare global {
+    interface Window {
+        view: (value: string) => void;
+        format: () => void;
+    }
+}
+
 window.view = (value: string) => setMode(value);
+window.format = format;
